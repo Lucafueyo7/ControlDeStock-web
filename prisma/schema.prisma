@@ -1,0 +1,41 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model products {
+  id         Int          @id @default(autoincrement())
+  codigo     String       @unique
+  nombre     String
+  precio     Float        @db.Real
+  cantidad   Int
+  activo     Boolean?     @default(true)
+  sale_items sale_items[]
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model sale_items {
+  id              Int      @id @default(autoincrement())
+  sale_id         Int
+  product_id      Int
+  cantidad        Int
+  precio_unitario Float    @db.Real
+  subtotal        Float    @db.Real
+  products        products @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sales           sales    @relation(fields: [sale_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model sales {
+  id         Int          @id @default(autoincrement())
+  fecha      DateTime?    @default(now()) @db.Timestamp(6)
+  total      Float        @db.Real
+  sale_items sale_items[]
+}

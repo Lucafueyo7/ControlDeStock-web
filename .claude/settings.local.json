@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:api.anthropic.com)",
+      "Bash(npx tsc *)",
+      "Bash(npx next *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\control\" -Recurse -Force)",
+      "Bash(Select-Object -Property FullName, PSIsContainer)",
+      "Bash(Sort-Object FullName)",
+      "Bash(Format-List)",
+      "Bash(New-Item -ItemType Directory -Force \"C:\\\\control\\\\app\\\\\\(auth\\)\\\\sign-in\\\\[[...sign-in]]\")",
+      "Bash(New-Item -ItemType Directory -Force \"C:\\\\control\\\\app\\\\\\(auth\\)\\\\sign-up\\\\[[...sign-up]]\")",
+      "Bash(New-Item -ItemType Directory -Force \"C:\\\\control\\\\app\\\\actions\")",
+      "PowerShell(cd C:\\\\control; $proc = Start-Process -FilePath \"pnpm\" -ArgumentList \"dev\" -PassThru -NoNewWindow -RedirectStandardOutput \"C:\\\\control\\\\dev-out.txt\" -RedirectStandardError \"C:\\\\control\\\\dev-err.txt\"; Start-Sleep -Seconds 15; Get-Content \"C:\\\\control\\\\dev-out.txt\" -ErrorAction SilentlyContinue; Get-Content \"C:\\\\control\\\\dev-err.txt\" -ErrorAction SilentlyContinue; $proc.Kill\\(\\))",
+      "Bash(timeout 20 pnpm dev)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(d.get\\('dependencies',{}\\).get\\('next',''\\)\\)\")",
+      "PowerShell(Stop-Process *)",
+      "Bash(timeout 25 pnpm dev)",
+      "Bash(pnpm add *)",
+      "PowerShell(Split-Path *)",
+      "Bash(node -e ' *)",
+      "Bash(node *)",
+      "Bash(where gswin64c *)",
+      "Bash(where gs *)",
+      "Read(//c/Program Files/**)",
+      "Bash(where magick *)",
+      "Bash(where pdftoppm *)",
+      "Bash(npx pdf-parse@1.1.1 --help)",
+      "Bash(not exist *)",
+      "PowerShell(New-Item *)"
+    ]
+  }
+}
