@@ -1,30 +1,33 @@
 
 'use client';
 import React, { useState, useMemo, useEffect } from 'react';
-import type { Product, Sale, Route, DaySales } from '../lib/data';
-import { fmtMoney, fmtMoneyShort, stockStatus, productHasSales } from '../lib/data';
+import type { Product, Sale, Route, DaySales, ChartPeriod } from '../lib/data';
+import { fmtMoney, fmtMoneyShort, stockStatus, productHasSales, computeChartData } from '../lib/data';
 import { createProduct, updateProduct, deleteProduct } from '../actions/products';
 import { createSale } from '../actions/sales';
 import {
   SearchIcon, PlusIcon, BackIcon, AlertIcon, ArrowUpIcon, BoxIcon,
-  CartIcon, MoreIcon, InfoIcon, ArchiveIcon, TrashIcon, EditIcon,
+  CartIcon, InfoIcon, ArchiveIcon, TrashIcon, EditIcon,
   TrendIcon, ChevIcon, ReceiptIcon, XIcon,
 } from './icons';
 import { Badge, Sheet, useToast } from './ui';
+import { NotaVentaModal } from './NotaVenta';
 import { UserButton } from '@clerk/nextjs';
 
 type GoTo = (name: Route['name'], param?: number | null, extra?: Route['extra']) => void;
 
 // ── Dashboard ────────────────────────────────────────────────
 
-export function MobileDashboard({ products, sales, onGoTo, dailySales }: { products: Product[]; sales: Sale[]; onGoTo: GoTo; dailySales: DaySales[] }) {
+export function MobileDashboard({ products, sales, onGoTo, dailySales: _ }: { products: Product[]; sales: Sale[]; onGoTo: GoTo; dailySales: DaySales[] }) {
+  const [period, setPeriod] = useState<ChartPeriod>('day');
   const active = products.filter(p => p.activity);
   const totalRevenue = sales.reduce((s, x) => s + x.total, 0);
   const totalItems = sales.reduce((s, x) => s + x.items.reduce((a, i) => a + i.cantidad, 0), 0);
   const inventoryValue = active.reduce((s, p) => s + p.precio * p.cantidad, 0);
   const lowStock = active.filter(p => p.cantidad < 10).sort((a, b) => a.cantidad - b.cantidad).slice(0, 4);
   const recent = [...sales].sort((a, b) => b.id - a.id).slice(0, 4);
-  const max = Math.max(...dailySales.map(d => d.t), 1);
+  const chartData = useMemo(() => computeChartData(sales, period), [sales, period]);
+  const max = Math.max(...chartData.map(d => d.t), 1);
 
   return (
     <div className="scroll">
@@ -74,12 +77,29 @@ export function MobileDashboard({ products, sales, onGoTo, dailySales }: { produ
 
       <div className="bars-card">
         <div className="bars-head">
-          <div className="bars-title">Ventas por día</div>
-          <div className="bars-period">Últimos 14 días</div>
+          <div className="bars-title">
+            {period === 'day' ? 'Ventas por día' : period === 'month' ? 'Ventas por mes' : 'Ventas por año'}
+          </div>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {(['day', 'month', 'year'] as ChartPeriod[]).map(p => (
+              <button key={p}
+                style={{
+                  fontSize: 10, padding: '2px 7px', borderRadius: 4, border: '1px solid var(--border)',
+                  background: period === p ? 'var(--surface-hover)' : 'transparent',
+                  color: period === p ? 'var(--text)' : 'var(--text-dim)',
+                  fontWeight: period === p ? 600 : 400, cursor: 'pointer',
+                }}
+                onClick={() => setPeriod(p)}>
+                {p === 'day' ? 'Día' : p === 'month' ? 'Mes' : 'Año'}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="bars">
-          {dailySales.map((d, i) => (
-            <div key={i} className={`bar ${d.t === 0 ? 'muted' : ''}`} style={{ height: `${Math.max((d.t / max) * 100, 5)}%` }} />
+          {chartData.map((d, i) => (
+            <div key={i} className={`bar ${d.t === 0 ? 'muted' : ''}`}
+              style={{ height: `${Math.max((d.t / max) * 100, 5)}%` }}
+              title={`${d.d}: ${fmtMoney(d.t)}`} />
           ))}
         </div>
       </div>
@@ -223,8 +243,6 @@ export function MobileProducts({ products, setProducts, sales, onGoTo, initialFi
           <AlertIcon style={{ width: 11, height: 11 }} /> Stock bajo
         </button>
         <button className={`chip danger ${filter === 'out' ? 'active' : ''}`} onClick={() => setFilter(filter === 'out' ? 'all' : 'out')}>Sin stock</button>
-        <button className="chip">Recientes</button>
-        <button className="chip">Más vendidos</button>
       </div>
 
       <div className="section" style={{ paddingBottom: 8 }}>
@@ -385,14 +403,18 @@ function ProductActionsSheet({ product, onClose, onEdit, onDelete, onHistory, sa
 
 export function MobileSales({ sales, products, onGoTo }: { sales: Sale[]; products: Product[]; onGoTo: GoTo }) {
   const [query, setQuery] = useState('');
+  const [filterFrom, setFilterFrom] = useState('');
+  const [filterTo, setFilterTo] = useState('');
   const list = useMemo(() => {
     let l = [...sales].sort((a, b) => b.id - a.id);
     if (query.trim()) {
       const q = query.toLowerCase();
       l = l.filter(s => String(s.id).includes(q) || s.fecha.toLowerCase().includes(q));
     }
+    if (filterFrom) l = l.filter(s => s.fecha.slice(0, 10) >= filterFrom);
+    if (filterTo)   l = l.filter(s => s.fecha.slice(0, 10) <= filterTo);
     return l;
-  }, [sales, query]);
+  }, [sales, query, filterFrom, filterTo]);
 
   const today = sales.filter(s => s.fecha.startsWith('2026-05-18')).reduce((a, s) => a + s.total, 0);
 
@@ -411,7 +433,7 @@ export function MobileSales({ sales, products, onGoTo }: { sales: Sale[]; produc
       <div className="header">
         <div>
           <h1 className="header-title">Ventas</h1>
-          <div className="header-sub">{sales.length} totales · {fmtMoney(today)} hoy</div>
+          <div className="header-sub">{sales.length} totales</div>
         </div>
         <div className="header-actions">
           <button className="icon-btn primary" onClick={() => onGoTo('sales-new')}>
@@ -423,6 +445,32 @@ export function MobileSales({ sales, products, onGoTo }: { sales: Sale[]; produc
       <div className="search-bar">
         <SearchIcon />
         <input placeholder="Buscar por ID o fecha…" value={query} onChange={e => setQuery(e.target.value)} />
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, padding: '0 16px 12px', alignItems: 'center' }}>
+        <input
+          type="date"
+          className="chip"
+          style={{ flex: 1, fontFamily: 'var(--font-mono)', fontSize: 12, cursor: 'pointer' }}
+          value={filterFrom}
+          onChange={e => setFilterFrom(e.target.value)}
+          aria-label="Desde"
+        />
+        <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>—</span>
+        <input
+          type="date"
+          className="chip"
+          style={{ flex: 1, fontFamily: 'var(--font-mono)', fontSize: 12, cursor: 'pointer' }}
+          value={filterTo}
+          onChange={e => setFilterTo(e.target.value)}
+          aria-label="Hasta"
+        />
+        {(filterFrom || filterTo) && (
+          <button className="chip" onClick={() => { setFilterFrom(''); setFilterTo(''); }}
+            style={{ color: 'var(--danger)', flexShrink: 0 }}>
+            ×
+          </button>
+        )}
       </div>
 
       {grouped.map(([day, items]) => {
@@ -483,6 +531,7 @@ export function MobileNewSale({ products, setProducts, sales, setSales, onGoTo }
   const [query, setQuery] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
+  const [pendingSale, setPendingSale] = useState<Sale | null>(null);
 
   const visible = useMemo(() => {
     let l = products.filter(p => p.activity && p.cantidad > 0);
@@ -528,7 +577,7 @@ export function MobileNewSale({ products, setProducts, sales, setSales, onGoTo }
     setSales(ss => [...ss, newSale]);
     setProducts(ps => ps.map(p => { const inCart = cart.find(it => it.product_id === p.id); return inCart ? { ...p, cantidad: p.cantidad - inCart.cantidad } : p; }));
     toast({ kind: 'success', title: `Venta #${newSale.id} registrada`, desc: `${cart.length} ítem(s) · ${fmtMoney(total)}` });
-    setCart([]); setCartOpen(false); onGoTo('sales');
+    setCart([]); setCartOpen(false); setPendingSale(newSale);
   };
 
   return (
@@ -604,6 +653,13 @@ export function MobileNewSale({ products, setProducts, sales, setSales, onGoTo }
         </div>
       )}
 
+      <NotaVentaModal
+        sale={pendingSale}
+        products={products}
+        isDesktop={false}
+        onClose={() => { setPendingSale(null); onGoTo('sales'); }}
+      />
+
       <Sheet open={cartOpen} onClose={() => setCartOpen(false)} title="Carrito" subtitle={`${cart.length} producto(s) · ${itemCount} ítem(s)`}
         footer={<button className="btn primary full" onClick={confirm} disabled={!cart.length}>Confirmar venta · {fmtMoney(total)}</button>}>
         {cart.map(it => {
@@ -653,9 +709,6 @@ export function MobileSaleDetail({ saleId, sales, products, onGoTo }: { saleId: 
           <button className="header-back" onClick={() => onGoTo('sales')}><BackIcon style={{ width: 14, height: 14 }} /> Ventas</button>
           <h1 className="header-title">Venta #{sale.id}</h1>
           <div className="header-sub">{sale.fecha}</div>
-        </div>
-        <div className="header-actions">
-          <button className="icon-btn"><MoreIcon style={{ width: 16, height: 16 }} /></button>
         </div>
       </div>
 

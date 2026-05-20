@@ -1,13 +1,13 @@
 'use client';
 import React, { useState, useMemo, useEffect } from 'react';
-import type { Product, Sale, Route, DaySales } from '../lib/data';
-import { fmtMoney, fmtMoneyShort, stockStatus, productHasSales } from '../lib/data';
+import type { Product, Sale, Route, DaySales, ChartPeriod } from '../lib/data';
+import { fmtMoney, fmtMoneyShort, stockStatus, productHasSales, computeChartData } from '../lib/data';
 import { createProduct, updateProduct, deleteProduct } from '../actions/products';
 import { createSale } from '../actions/sales';
 import { NotaVentaModal } from './NotaVenta';
 import {
   SearchIcon, PlusIcon, TrashIcon, EditIcon, BackIcon, XIcon,
-  AlertIcon, ArrowUpIcon, ArrowDownIcon, TrendIcon, BoxIcon, CartIcon, MoreIcon, InfoIcon,
+  AlertIcon, ArrowUpIcon, ArrowDownIcon, TrendIcon, BoxIcon, CartIcon, InfoIcon,
 } from './icons';
 import { Badge, Modal, SparkBars, useToast } from './ui';
 
@@ -21,12 +21,20 @@ type SharedProps = {
 
 // ── Dashboard ────────────────────────────────────────────────
 
-export function DesktopDashboard({ products, sales, onGoTo, dailySales }: Pick<SharedProps, 'products' | 'sales' | 'onGoTo'> & { dailySales: DaySales[] }) {
+const PERIOD_LABELS: Record<ChartPeriod, { title: string; sub: string }> = {
+  day:   { title: 'Ventas por día',  sub: 'Últimos 14 días · ARS' },
+  month: { title: 'Ventas por mes',  sub: 'Últimos 12 meses · ARS' },
+  year:  { title: 'Ventas por año',  sub: 'Todos los períodos · ARS' },
+};
+
+export function DesktopDashboard({ products, sales, onGoTo, dailySales: _ }: Pick<SharedProps, 'products' | 'sales' | 'onGoTo'> & { dailySales: DaySales[] }) {
+  const [period, setPeriod] = useState<ChartPeriod>('day');
   const active = products.filter(p => p.activity);
   const totalRevenue = sales.reduce((s, x) => s + x.total, 0);
   const totalItems = sales.reduce((s, x) => s + x.items.reduce((a, i) => a + i.cantidad, 0), 0);
   const inventoryValue = active.reduce((s, p) => s + p.precio * p.cantidad, 0);
   const lowStock = active.filter(p => p.cantidad < 10).sort((a, b) => a.cantidad - b.cantidad).slice(0, 6);
+  const chartData = useMemo(() => computeChartData(sales, period), [sales, period]);
 
   const productSales = useMemo(() => {
     const map = new Map<number, { units: number; revenue: number }>();
@@ -51,7 +59,6 @@ export function DesktopDashboard({ products, sales, onGoTo, dailySales }: Pick<S
           <div className="page-sub">Vista general · actualizado hace 2 min</div>
         </div>
         <div className="page-actions">
-          <button className="btn btn-sm">Últimos 14 días</button>
           <button className="btn btn-primary btn-sm" onClick={() => onGoTo('sales-new')}>
             <PlusIcon style={{ width: 13, height: 13 }} /> Nueva venta
           </button>
@@ -69,16 +76,20 @@ export function DesktopDashboard({ products, sales, onGoTo, dailySales }: Pick<S
         <div className="card">
           <div className="card-head">
             <div>
-              <div className="card-title">Ventas por día</div>
-              <div className="metric-sub" style={{ marginTop: 4 }}>Últimos 14 días · ARS</div>
+              <div className="card-title">{PERIOD_LABELS[period].title}</div>
+              <div className="metric-sub" style={{ marginTop: 4 }}>{PERIOD_LABELS[period].sub}</div>
             </div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button className="btn btn-sm">Día</button>
-              <button className="btn btn-sm" style={{ background: 'var(--surface-hover)' }}>Semana</button>
-              <button className="btn btn-sm">Mes</button>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {(['day', 'month', 'year'] as ChartPeriod[]).map(p => (
+                <button key={p} className="btn btn-sm"
+                  style={period === p ? { background: 'var(--surface-hover)', fontWeight: 600 } : undefined}
+                  onClick={() => setPeriod(p)}>
+                  {p === 'day' ? 'Día' : p === 'month' ? 'Mes' : 'Año'}
+                </button>
+              ))}
             </div>
           </div>
-          <div className="card-body"><SparkBars data={dailySales} /></div>
+          <div className="card-body"><SparkBars data={chartData} /></div>
         </div>
 
         <div className="card">
@@ -252,6 +263,20 @@ export function DesktopProducts({ products, setProducts, sales, onGoTo }: Shared
     setEditing(null);
   };
 
+  const handleExportCSV = () => {
+    const rows = products
+      .filter(p => p.activity)
+      .map(p => `"${p.nombre}",${p.precio},${p.cantidad}`);
+    const csv = ['"Nombre","Precio","Cantidad"', ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'stock.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const nextId = (products.reduce((m, p) => Math.max(m, p.id), 0) || 0) + 1;
 
   return (
@@ -262,7 +287,7 @@ export function DesktopProducts({ products, setProducts, sales, onGoTo }: Shared
           <div className="page-sub">{visible.length} de {products.filter(p => p.activity).length} productos activos · doble-click para editar</div>
         </div>
         <div className="page-actions">
-          <button className="btn btn-sm">Exportar CSV</button>
+          <button className="btn btn-sm" onClick={handleExportCSV}>Generar listado de stock</button>
           <button className="btn btn-primary btn-sm" onClick={() => setAddOpen(true)}>
             <PlusIcon style={{ width: 13, height: 13 }} /> Agregar producto
           </button>
@@ -459,6 +484,8 @@ function AddProductModal({ open, onClose, onAdd, nextId }: {
 
 export function DesktopSales({ products, sales, onGoTo }: Pick<SharedProps, 'products' | 'sales' | 'onGoTo'>) {
   const [query, setQuery] = useState('');
+  const [filterFrom, setFilterFrom] = useState('');
+  const [filterTo, setFilterTo] = useState('');
   const list = useMemo(() => {
     let l = [...sales].sort((a, b) => b.id - a.id);
     if (query.trim()) {
@@ -466,8 +493,10 @@ export function DesktopSales({ products, sales, onGoTo }: Pick<SharedProps, 'pro
       l = l.filter(s => String(s.id).includes(q) || s.fecha.toLowerCase().includes(q) ||
         s.items.some(it => { const p = products.find(p => p.id === it.product_id); return p && p.nombre.toLowerCase().includes(q); }));
     }
+    if (filterFrom) l = l.filter(s => s.fecha.slice(0, 10) >= filterFrom);
+    if (filterTo)   l = l.filter(s => s.fecha.slice(0, 10) <= filterTo);
     return l;
-  }, [sales, query, products]);
+  }, [sales, query, products, filterFrom, filterTo]);
   const todayTotal = sales.filter(s => s.fecha.startsWith('2026-05-18')).reduce((a, s) => a + s.total, 0);
 
   return (
@@ -478,7 +507,6 @@ export function DesktopSales({ products, sales, onGoTo }: Pick<SharedProps, 'pro
           <div className="page-sub">{sales.length} ventas · {fmtMoney(todayTotal)} facturado hoy</div>
         </div>
         <div className="page-actions">
-          <button className="btn btn-sm">Exportar CSV</button>
           <button className="btn btn-primary btn-sm" onClick={() => onGoTo('sales-new')}>
             <PlusIcon style={{ width: 13, height: 13 }} /> Nueva venta
           </button>
@@ -491,8 +519,31 @@ export function DesktopSales({ products, sales, onGoTo }: Pick<SharedProps, 'pro
             <SearchIcon />
             <input placeholder="Buscar por ID, fecha o producto…" value={query} onChange={e => setQuery(e.target.value)} />
           </div>
-          <button className="chip-filter">Hoy</button>
-          <button className="chip-filter">Esta semana</button>
+          <input
+            type="date"
+            className="chip-filter"
+            style={{ cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 12 }}
+            value={filterFrom}
+            onChange={e => setFilterFrom(e.target.value)}
+            title="Desde"
+          />
+          <input
+            type="date"
+            className="chip-filter"
+            style={{ cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 12 }}
+            value={filterTo}
+            onChange={e => setFilterTo(e.target.value)}
+            title="Hasta"
+          />
+          {(filterFrom || filterTo) && (
+            <button
+              className="chip-filter"
+              onClick={() => { setFilterFrom(''); setFilterTo(''); }}
+              style={{ color: 'var(--danger)' }}
+            >
+              × Limpiar
+            </button>
+          )}
           <div style={{ marginLeft: 'auto', fontSize: 11.5, color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>{list.length} resultados</div>
         </div>
         <table className="table">
@@ -503,7 +554,6 @@ export function DesktopSales({ products, sales, onGoTo }: Pick<SharedProps, 'pro
               <th>Productos</th>
               <th style={{ width: 90 }} className="right">Ítems</th>
               <th style={{ width: 140 }} className="right">Total</th>
-              <th style={{ width: 60 }}></th>
             </tr>
           </thead>
           <tbody>
@@ -526,7 +576,6 @@ export function DesktopSales({ products, sales, onGoTo }: Pick<SharedProps, 'pro
                 </td>
                 <td className="right num">{s.items.reduce((a, i) => a + i.cantidad, 0)}</td>
                 <td className="right num" style={{ fontWeight: 500 }}>{fmtMoney(s.total)}</td>
-                <td><div className="row-actions"><button className="btn btn-ghost btn-sm btn-icon"><MoreIcon style={{ width: 13, height: 13 }} /></button></div></td>
               </tr>
             ))}
           </tbody>
@@ -730,10 +779,6 @@ export function DesktopSaleDetail({ saleId, products, sales, onGoTo }: { saleId:
             <h1 className="page-title">Venta #{sale.id}</h1>
             <div className="page-sub" style={{ fontFamily: 'var(--font-mono)' }}>{sale.fecha}</div>
           </div>
-        </div>
-        <div className="page-actions">
-          <button className="btn btn-sm">Imprimir</button>
-          <button className="btn btn-sm">Reenviar comprobante</button>
         </div>
       </div>
 

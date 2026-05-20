@@ -7,6 +7,7 @@ import { Modal, Sheet } from './ui';
 export interface CustomerInfo {
   nombre: string;
   dniCuit: string;
+  razonSocial: string;
   empresa: string;
   direccion: string;
   cpCiudad: string;
@@ -150,6 +151,7 @@ export function abrirNotaPDF(sale: Sale, products: Product[], customer: Customer
             <td class="field-name">DNI / CUIT / CUIL</td>
             <td class="field-value">${customer.dniCuit || '—'}</td>
           </tr>
+          ${customer.razonSocial ? `<tr><td class="field-name">Razón social</td><td class="field-value">${customer.razonSocial}</td></tr>` : ''}
           ${customer.empresa ? `<tr><td class="field-name">Nombre de la empresa</td><td class="field-value">${customer.empresa}</td></tr>` : ''}
           ${customer.direccion ? `<tr><td class="field-name">Dirección postal</td><td class="field-value">${customer.direccion}</td></tr>` : ''}
           ${customer.cpCiudad ? `<tr><td class="field-name">CP — Ciudad (Provincia)</td><td class="field-value">${customer.cpCiudad}</td></tr>` : ''}
@@ -211,7 +213,7 @@ interface NotaVentaModalProps {
 
 export function NotaVentaModal({ sale, products, isDesktop, onClose }: NotaVentaModalProps) {
   const [customer, setCustomer] = useState<CustomerInfo>({
-    nombre: '', dniCuit: '', empresa: '', direccion: '', cpCiudad: '',
+    nombre: '', dniCuit: '', razonSocial: '', empresa: '', direccion: '', cpCiudad: '',
   });
 
   if (!sale) return null;
@@ -235,6 +237,12 @@ export function NotaVentaModal({ sale, products, isDesktop, onClose }: NotaVenta
       <div className="field">
         <label className="field-label">DNI / CUIT / CUIL</label>
         <input className="input mono" placeholder="20-12345678-9" value={customer.dniCuit} onChange={set('dniCuit')} />
+      </div>
+      <div className="field">
+        <label className="field-label">
+          Razón social <span style={{ opacity: 0.5, fontSize: '0.85em' }}>(opcional)</span>
+        </label>
+        <input className="input" placeholder="Nombre legal de la empresa" value={customer.razonSocial} onChange={set('razonSocial')} />
       </div>
       <div className="field">
         <label className="field-label">
@@ -281,6 +289,7 @@ export function NotaVentaModal({ sale, products, isDesktop, onClose }: NotaVenta
   return (
     <Sheet
       open
+      full
       onClose={onClose}
       title="Nota de venta"
       subtitle={subtitle}

@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, useEffect, useRef, useCallb
 import type { ReactNode } from 'react';
 import { CheckIcon, InfoIcon, AlertIcon, XIcon } from './icons';
 import type { DaySales } from '../lib/data';
+import { fmtMoney } from '../lib/data';
 
 // ── Toast ────────────────────────────────────────────────────
 
@@ -165,7 +166,7 @@ export function SparkBars({ data, height = 180 }: { data: DaySales[]; height?: n
           <div key={i}
                className={`bar ${d.t === 0 ? 'muted' : ''}`}
                style={{ height: `${Math.max((d.t / max) * 100, 4)}%` }}
-               title={`${d.d}: ${d.t}`} />
+               title={`${d.d}: ${fmtMoney(d.t)}`} />
         ))}
       </div>
       <div className="bar-labels">
