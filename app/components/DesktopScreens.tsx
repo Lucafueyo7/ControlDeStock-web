@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useMemo, useEffect } from 'react';
 import type { Product, Sale, Route, DaySales, ChartPeriod } from '../lib/data';
-import { fmtMoney, fmtMoneyShort, stockStatus, productHasSales, computeChartData } from '../lib/data';
+import { fmtMoney, fmtMoneyShort, stockStatus, productHasSales, computeChartData, fmtFechaDisplay } from '../lib/data';
 import { createProduct, updateProduct, deleteProduct } from '../actions/products';
 import { createSale } from '../actions/sales';
 import { NotaVentaModal } from './NotaVenta';
@@ -161,7 +161,7 @@ export function DesktopDashboard({ products, sales, onGoTo, dailySales: _ }: Pic
                 {recentSales.map(s => (
                   <tr key={s.id} onClick={() => onGoTo('sale-detail', s.id)} style={{ cursor: 'pointer' }}>
                     <td className="id-cell">#{s.id}</td>
-                    <td style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>{s.fecha}</td>
+                    <td style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>{fmtFechaDisplay(s.fecha)}</td>
                     <td className="right num">{s.items.reduce((a, i) => a + i.cantidad, 0)}</td>
                     <td className="right num" style={{ fontWeight: 500 }}>{fmtMoney(s.total)}</td>
                   </tr>
@@ -201,6 +201,7 @@ export function DesktopProducts({ products, setProducts, sales, onGoTo }: Shared
   const [stockFilter, setStockFilter] = useState<'all' | 'low' | 'out'>('all');
   const [sort, setSort] = useState<{ key: keyof Product; dir: 'asc' | 'desc' }>({ key: 'id', dir: 'asc' });
   const [addOpen, setAddOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<Product | null>(null);
   const [editing, setEditing] = useState<{ id: number; field: string } | null>(null);
   const [draft, setDraft] = useState('');
 
@@ -261,6 +262,13 @@ export function DesktopProducts({ products, setProducts, sales, onGoTo }: Shared
     const result = await updateProduct(editing.id, { [editing.field]: v } as Partial<Omit<Product, 'id'>>);
     setProducts(ps => ps.map(p => p.id === editing.id ? result : p));
     setEditing(null);
+  };
+
+  const handleEdit = async (updated: Product) => {
+    const result = await updateProduct(updated.id, { nombre: updated.nombre, precio: updated.precio, cantidad: updated.cantidad });
+    setProducts(ps => ps.map(p => p.id === updated.id ? result : p));
+    toast({ kind: 'success', title: 'Producto actualizado' });
+    setEditTarget(null);
   };
 
   const handleExportCSV = () => {
@@ -382,7 +390,7 @@ export function DesktopProducts({ products, setProducts, sales, onGoTo }: Shared
                       <button className="btn btn-ghost btn-sm btn-icon" title="Ver historial" onClick={() => onGoTo('product-detail', p.id)}>
                         <TrendIcon style={{ width: 13, height: 13 }} />
                       </button>
-                      <button className="btn btn-ghost btn-sm btn-icon" title="Editar" onClick={() => startEdit(p.id, 'nombre', p.nombre)}>
+                      <button className="btn btn-ghost btn-sm btn-icon" title="Editar" onClick={() => setEditTarget(p)}>
                         <EditIcon style={{ width: 13, height: 13 }} />
                       </button>
                       <button className="btn btn-ghost btn-sm btn-icon btn-danger" title="Eliminar" onClick={() => handleDelete(p)}>
@@ -398,6 +406,7 @@ export function DesktopProducts({ products, setProducts, sales, onGoTo }: Shared
       </div>
 
       <AddProductModal open={addOpen} onClose={() => setAddOpen(false)} onAdd={handleAdd} nextId={nextId} />
+      <EditProductModal product={editTarget} onClose={() => setEditTarget(null)} onSave={handleEdit} />
     </div>
   );
 }
@@ -480,12 +489,60 @@ function AddProductModal({ open, onClose, onAdd, nextId }: {
   );
 }
 
+function EditProductModal({ product, onClose, onSave }: {
+  product: Product | null; onClose: () => void; onSave: (p: Product) => void;
+}) {
+  const [data, setData] = useState<Product | null>(null);
+  useEffect(() => { if (product) setData({ ...product }); }, [product]);
+  if (!product || !data) return null;
+  return (
+    <Modal open={!!product} onClose={onClose}
+      title="Editar producto"
+      subtitle={`${product.codigo} · ID #${String(product.id).padStart(4, '0')}`}
+      footer={
+        <>
+          <button className="btn btn-sm" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary btn-sm" onClick={() => onSave(data)}>Guardar cambios</button>
+        </>
+      }>
+      <div className="field">
+        <label className="field-label">Nombre</label>
+        <input className="input" autoFocus value={data.nombre}
+          onChange={e => setData(d => d ? { ...d, nombre: e.target.value } : d)} />
+      </div>
+      <div className="form-row">
+        <div className="field">
+          <label className="field-label">Precio (ARS)</label>
+          <input className="input mono" type="number" value={data.precio}
+            onChange={e => setData(d => d ? { ...d, precio: Number(e.target.value) || 0 } : d)} />
+        </div>
+        <div className="field">
+          <label className="field-label">Stock</label>
+          <input className="input mono" type="number" value={data.cantidad}
+            onChange={e => setData(d => d ? { ...d, cantidad: Number(e.target.value) || 0 } : d)} />
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // ── Sales ────────────────────────────────────────────────────
 
 export function DesktopSales({ products, sales, onGoTo }: Pick<SharedProps, 'products' | 'sales' | 'onGoTo'>) {
   const [query, setQuery] = useState('');
   const [filterFrom, setFilterFrom] = useState('');
   const [filterTo, setFilterTo] = useState('');
+
+  const ddToISO = (v: string) => v.length === 10
+    ? `${v.slice(6)}-${v.slice(3, 5)}-${v.slice(0, 2)}` : '';
+  const fmtDate = (raw: string, prev: string) => {
+    if (raw.length < prev.length) return raw; // allow backspace freely
+    const d = raw.replace(/\D/g, '').slice(0, 8);
+    if (d.length <= 2) return d;
+    if (d.length <= 4) return `${d.slice(0,2)}/${d.slice(2)}`;
+    return `${d.slice(0,2)}/${d.slice(2,4)}/${d.slice(4)}`;
+  };
+
   const list = useMemo(() => {
     let l = [...sales].sort((a, b) => b.id - a.id);
     if (query.trim()) {
@@ -493,11 +550,14 @@ export function DesktopSales({ products, sales, onGoTo }: Pick<SharedProps, 'pro
       l = l.filter(s => String(s.id).includes(q) || s.fecha.toLowerCase().includes(q) ||
         s.items.some(it => { const p = products.find(p => p.id === it.product_id); return p && p.nombre.toLowerCase().includes(q); }));
     }
-    if (filterFrom) l = l.filter(s => s.fecha.slice(0, 10) >= filterFrom);
-    if (filterTo)   l = l.filter(s => s.fecha.slice(0, 10) <= filterTo);
+    const fromISO = ddToISO(filterFrom);
+    const toISO   = ddToISO(filterTo);
+    if (fromISO) l = l.filter(s => s.fecha.slice(0, 10) >= fromISO);
+    if (toISO)   l = l.filter(s => s.fecha.slice(0, 10) <= toISO);
     return l;
   }, [sales, query, products, filterFrom, filterTo]);
-  const todayTotal = sales.filter(s => s.fecha.startsWith('2026-05-18')).reduce((a, s) => a + s.total, 0);
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayTotal = sales.filter(s => s.fecha.slice(0, 10) === todayStr).reduce((a, s) => a + s.total, 0);
 
   return (
     <div className="page">
@@ -519,22 +579,32 @@ export function DesktopSales({ products, sales, onGoTo }: Pick<SharedProps, 'pro
             <SearchIcon />
             <input placeholder="Buscar por ID, fecha o producto…" value={query} onChange={e => setQuery(e.target.value)} />
           </div>
-          <input
-            type="date"
-            className="chip-filter"
-            style={{ cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 12 }}
-            value={filterFrom}
-            onChange={e => setFilterFrom(e.target.value)}
-            title="Desde"
-          />
-          <input
-            type="date"
-            className="chip-filter"
-            style={{ cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 12 }}
-            value={filterTo}
-            onChange={e => setFilterTo(e.target.value)}
-            title="Hasta"
-          />
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11.5, color: 'var(--text-dim)', whiteSpace: 'nowrap' }}>
+            Desde
+            <input
+              type="text"
+              inputMode="numeric"
+              className="chip-filter"
+              placeholder="DD/MM/AAAA"
+              maxLength={10}
+              style={{ fontFamily: 'var(--font-mono)', fontSize: 12, width: 100 }}
+              value={filterFrom}
+              onChange={e => setFilterFrom(fmtDate(e.target.value, filterFrom))}
+            />
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11.5, color: 'var(--text-dim)', whiteSpace: 'nowrap' }}>
+            Hasta
+            <input
+              type="text"
+              inputMode="numeric"
+              className="chip-filter"
+              placeholder="DD/MM/AAAA"
+              maxLength={10}
+              style={{ fontFamily: 'var(--font-mono)', fontSize: 12, width: 100 }}
+              value={filterTo}
+              onChange={e => setFilterTo(fmtDate(e.target.value, filterTo))}
+            />
+          </label>
           {(filterFrom || filterTo) && (
             <button
               className="chip-filter"
@@ -560,7 +630,7 @@ export function DesktopSales({ products, sales, onGoTo }: Pick<SharedProps, 'pro
             {list.map(s => (
               <tr key={s.id} onClick={() => onGoTo('sale-detail', s.id)} style={{ cursor: 'pointer' }}>
                 <td className="id-cell">#{s.id}</td>
-                <td style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>{s.fecha}</td>
+                <td style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>{fmtFechaDisplay(s.fecha)}</td>
                 <td>
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                     {s.items.slice(0, 3).map(it => {
@@ -777,7 +847,7 @@ export function DesktopSaleDetail({ saleId, products, sales, onGoTo }: { saleId:
           </button>
           <div>
             <h1 className="page-title">Venta #{sale.id}</h1>
-            <div className="page-sub" style={{ fontFamily: 'var(--font-mono)' }}>{sale.fecha}</div>
+            <div className="page-sub" style={{ fontFamily: 'var(--font-mono)' }}>{fmtFechaDisplay(sale.fecha)}</div>
           </div>
         </div>
       </div>
@@ -921,7 +991,7 @@ export function DesktopProductDetail({ productId, products, sales, onGoTo }: { p
               return (
                 <tr key={s.id} onClick={() => onGoTo('sale-detail', s.id)} style={{ cursor: 'pointer' }}>
                   <td className="id-cell">#{s.id}</td>
-                  <td style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>{s.fecha}</td>
+                  <td style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>{fmtFechaDisplay(s.fecha)}</td>
                   <td className="right num">{it.cantidad}</td>
                   <td className="right num">{fmtMoney(it.precio_unitario)}</td>
                   <td className="right num" style={{ fontWeight: 500 }}>{fmtMoney(it.subtotal)}</td>

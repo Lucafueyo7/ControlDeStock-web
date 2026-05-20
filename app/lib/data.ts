@@ -56,6 +56,17 @@ export function productHasSales(productId: number, sales: Sale[]): boolean {
   return sales.some(s => s.items.some(it => it.product_id === productId));
 }
 
+export function fmtFechaDisplay(fecha: string): string {
+  const d = new Date(fecha);
+  if (isNaN(d.getTime())) return fecha;
+  const day   = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year  = d.getFullYear();
+  const h     = String(d.getHours()).padStart(2, '0');
+  const m     = String(d.getMinutes()).padStart(2, '0');
+  return `${day}/${month}/${year} ${h}:${m}`;
+}
+
 export function nowFecha(): string {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
@@ -71,7 +82,7 @@ export function computeChartData(sales: Sale[], period: ChartPeriod): DaySales[]
       d.setDate(d.getDate() - i);
       const key = d.toISOString().slice(0, 10);
       const t = sales.filter(s => s.fecha.slice(0, 10) === key).reduce((a, s) => a + s.total, 0);
-      result.push({ d: key.slice(5), t });
+      result.push({ d: `${key.slice(8)}/${key.slice(5, 7)}`, t });
     }
     return result;
   }

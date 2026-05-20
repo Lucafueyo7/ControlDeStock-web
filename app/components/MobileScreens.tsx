@@ -2,7 +2,7 @@
 'use client';
 import React, { useState, useMemo, useEffect } from 'react';
 import type { Product, Sale, Route, DaySales, ChartPeriod } from '../lib/data';
-import { fmtMoney, fmtMoneyShort, stockStatus, productHasSales, computeChartData } from '../lib/data';
+import { fmtMoney, fmtMoneyShort, stockStatus, productHasSales, computeChartData, fmtFechaDisplay } from '../lib/data';
 import { createProduct, updateProduct, deleteProduct } from '../actions/products';
 import { createSale } from '../actions/sales';
 import {
@@ -140,7 +140,7 @@ export function MobileDashboard({ products, sales, onGoTo, dailySales: _ }: { pr
               <div className="row-main">
                 <div className="row-title">Venta #{s.id}</div>
                 <div className="row-meta">
-                  <span>{s.fecha.split(' ')[1]}</span>
+                  <span>{fmtFechaDisplay(s.fecha).slice(-5)}</span>
                   <span className="dot-sep">·</span>
                   <span>{s.items.reduce((a, i) => a + i.cantidad, 0)} ítems</span>
                 </div>
@@ -405,23 +405,37 @@ export function MobileSales({ sales, products, onGoTo }: { sales: Sale[]; produc
   const [query, setQuery] = useState('');
   const [filterFrom, setFilterFrom] = useState('');
   const [filterTo, setFilterTo] = useState('');
+
+  const ddToISO = (v: string) => v.length === 10
+    ? `${v.slice(6)}-${v.slice(3, 5)}-${v.slice(0, 2)}` : '';
+  const fmtDate = (raw: string, prev: string) => {
+    if (raw.length < prev.length) return raw;
+    const d = raw.replace(/\D/g, '').slice(0, 8);
+    if (d.length <= 2) return d;
+    if (d.length <= 4) return `${d.slice(0,2)}/${d.slice(2)}`;
+    return `${d.slice(0,2)}/${d.slice(2,4)}/${d.slice(4)}`;
+  };
+
   const list = useMemo(() => {
     let l = [...sales].sort((a, b) => b.id - a.id);
     if (query.trim()) {
       const q = query.toLowerCase();
       l = l.filter(s => String(s.id).includes(q) || s.fecha.toLowerCase().includes(q));
     }
-    if (filterFrom) l = l.filter(s => s.fecha.slice(0, 10) >= filterFrom);
-    if (filterTo)   l = l.filter(s => s.fecha.slice(0, 10) <= filterTo);
+    const fromISO = ddToISO(filterFrom);
+    const toISO   = ddToISO(filterTo);
+    if (fromISO) l = l.filter(s => s.fecha.slice(0, 10) >= fromISO);
+    if (toISO)   l = l.filter(s => s.fecha.slice(0, 10) <= toISO);
     return l;
   }, [sales, query, filterFrom, filterTo]);
 
-  const today = sales.filter(s => s.fecha.startsWith('2026-05-18')).reduce((a, s) => a + s.total, 0);
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const today = sales.filter(s => s.fecha.slice(0, 10) === todayStr).reduce((a, s) => a + s.total, 0);
 
   const grouped = useMemo(() => {
     const g = new Map<string, Sale[]>();
     list.forEach(s => {
-      const day = s.fecha.split(' ')[0];
+      const day = s.fecha.slice(0, 10);
       if (!g.has(day)) g.set(day, []);
       g.get(day)!.push(s);
     });
@@ -447,24 +461,33 @@ export function MobileSales({ sales, products, onGoTo }: { sales: Sale[]; produc
         <input placeholder="Buscar por ID o fecha…" value={query} onChange={e => setQuery(e.target.value)} />
       </div>
 
-      <div style={{ display: 'flex', gap: 8, padding: '0 16px 12px', alignItems: 'center' }}>
-        <input
-          type="date"
-          className="chip"
-          style={{ flex: 1, fontFamily: 'var(--font-mono)', fontSize: 12, cursor: 'pointer' }}
-          value={filterFrom}
-          onChange={e => setFilterFrom(e.target.value)}
-          aria-label="Desde"
-        />
-        <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>—</span>
-        <input
-          type="date"
-          className="chip"
-          style={{ flex: 1, fontFamily: 'var(--font-mono)', fontSize: 12, cursor: 'pointer' }}
-          value={filterTo}
-          onChange={e => setFilterTo(e.target.value)}
-          aria-label="Hasta"
-        />
+      <div style={{ display: 'flex', gap: 6, padding: '0 16px 12px', alignItems: 'center' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1, fontSize: 11, color: 'var(--text-dim)', whiteSpace: 'nowrap' }}>
+          Desde
+          <input
+            type="text"
+            inputMode="numeric"
+            className="chip"
+            placeholder="DD/MM/AAAA"
+            maxLength={10}
+            style={{ flex: 1, fontFamily: 'var(--font-mono)', fontSize: 11, minWidth: 0 }}
+            value={filterFrom}
+            onChange={e => setFilterFrom(fmtDate(e.target.value, filterFrom))}
+          />
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1, fontSize: 11, color: 'var(--text-dim)', whiteSpace: 'nowrap' }}>
+          Hasta
+          <input
+            type="text"
+            inputMode="numeric"
+            className="chip"
+            placeholder="DD/MM/AAAA"
+            maxLength={10}
+            style={{ flex: 1, fontFamily: 'var(--font-mono)', fontSize: 11, minWidth: 0 }}
+            value={filterTo}
+            onChange={e => setFilterTo(fmtDate(e.target.value, filterTo))}
+          />
+        </label>
         {(filterFrom || filterTo) && (
           <button className="chip" onClick={() => { setFilterFrom(''); setFilterTo(''); }}
             style={{ color: 'var(--danger)', flexShrink: 0 }}>
@@ -475,7 +498,8 @@ export function MobileSales({ sales, products, onGoTo }: { sales: Sale[]; produc
 
       {grouped.map(([day, items]) => {
         const dayTotal = items.reduce((a, s) => a + s.total, 0);
-        const dayLabel = day === '2026-05-18' ? 'Hoy' : day === '2026-05-17' ? 'Ayer' : day;
+        const ystStr = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+        const dayLabel = day === todayStr ? 'Hoy' : day === ystStr ? 'Ayer' : `${day.slice(8)}/${day.slice(5, 7)}/${day.slice(0, 4)}`;
         return (
           <div className="section" key={day}>
             <div className="section-head">
@@ -489,7 +513,7 @@ export function MobileSales({ sales, products, onGoTo }: { sales: Sale[]; produc
                   <div className="row-main">
                     <div className="row-title">Venta #{s.id}</div>
                     <div className="row-meta">
-                      <span>{s.fecha.split(' ')[1]}</span>
+                      <span>{fmtFechaDisplay(s.fecha).slice(-5)}</span>
                       <span className="dot-sep">·</span>
                       <span>{s.items.reduce((a, i) => a + i.cantidad, 0)} ítems · {s.items.length} prod.</span>
                     </div>
@@ -708,7 +732,7 @@ export function MobileSaleDetail({ saleId, sales, products, onGoTo }: { saleId: 
         <div>
           <button className="header-back" onClick={() => onGoTo('sales')}><BackIcon style={{ width: 14, height: 14 }} /> Ventas</button>
           <h1 className="header-title">Venta #{sale.id}</h1>
-          <div className="header-sub">{sale.fecha}</div>
+          <div className="header-sub">{fmtFechaDisplay(sale.fecha)}</div>
         </div>
       </div>
 
@@ -755,8 +779,18 @@ export function MobileSaleDetail({ saleId, sales, products, onGoTo }: { saleId: 
 
 // ── Product Detail ────────────────────────────────────────────
 
-export function MobileProductDetail({ productId, products, sales, onGoTo }: { productId: number | null; products: Product[]; sales: Sale[]; onGoTo: GoTo }) {
+export function MobileProductDetail({ productId, products, setProducts, sales, onGoTo }: { productId: number | null; products: Product[]; setProducts: React.Dispatch<React.SetStateAction<Product[]>>; sales: Sale[]; onGoTo: GoTo }) {
+  const toast = useToast();
+  const [editing, setEditing] = useState(false);
   const product = products.find(p => p.id === productId);
+
+  const handleEdit = async (updated: Product) => {
+    const result = await updateProduct(updated.id, { nombre: updated.nombre, precio: updated.precio, cantidad: updated.cantidad });
+    setProducts(ps => ps.map(p => p.id === updated.id ? result : p));
+    toast({ kind: 'success', title: 'Producto actualizado' });
+    setEditing(false);
+  };
+
   if (!product) return (
     <div className="scroll">
       <div className="header"><button className="header-back" onClick={() => onGoTo('products')}><BackIcon style={{ width: 14, height: 14 }} /> Productos</button></div>
@@ -778,6 +812,9 @@ export function MobileProductDetail({ productId, products, sales, onGoTo }: { pr
           <div className="header-sub">{product.codigo} · ID #{String(product.id).padStart(4,'0')}</div>
         </div>
         <div className="header-actions">
+          <button className="icon-btn" onClick={() => setEditing(true)} title="Editar producto">
+            <EditIcon style={{ width: 16, height: 16 }} />
+          </button>
           <Badge kind={st.cls}><span className="dot" />{st.label}</Badge>
         </div>
       </div>
@@ -809,7 +846,7 @@ export function MobileProductDetail({ productId, products, sales, onGoTo }: { pr
                   <div className="row-thumb"><ReceiptIcon style={{ width: 16, height: 16, color: 'var(--text-muted)' }} /></div>
                   <div className="row-main">
                     <div className="row-title">Venta #{s.id}</div>
-                    <div className="row-meta"><span>{s.fecha}</span><span className="dot-sep">·</span><span>{it.cantidad} × {fmtMoney(it.precio_unitario)}</span></div>
+                    <div className="row-meta"><span>{fmtFechaDisplay(s.fecha)}</span><span className="dot-sep">·</span><span>{it.cantidad} × {fmtMoney(it.precio_unitario)}</span></div>
                   </div>
                   <div className="row-side">
                     <div className="row-side-main">{fmtMoney(it.subtotal)}</div>
@@ -821,6 +858,7 @@ export function MobileProductDetail({ productId, products, sales, onGoTo }: { pr
           </div>
         )}
       </div>
+      <EditProductSheet product={editing ? product : null} onClose={() => setEditing(false)} onSave={handleEdit} />
     </div>
   );
 }

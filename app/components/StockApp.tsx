@@ -232,7 +232,7 @@ function MobileShell({ products, setProducts, sales, setSales, route, onGoTo, da
       case 'sales':          return <MobileSales sales={sales} products={products} onGoTo={onGoTo} />;
       case 'sales-new':      return <MobileNewSale products={products} setProducts={setProducts} sales={sales} setSales={setSales} onGoTo={onGoTo} />;
       case 'sale-detail':    return <MobileSaleDetail saleId={route.param ?? null} sales={sales} products={products} onGoTo={onGoTo} />;
-      case 'product-detail': return <MobileProductDetail productId={route.param ?? null} products={products} sales={sales} onGoTo={onGoTo} />;
+      case 'product-detail': return <MobileProductDetail productId={route.param ?? null} products={products} setProducts={setProducts} sales={sales} onGoTo={onGoTo} />;
     }
   };
 
